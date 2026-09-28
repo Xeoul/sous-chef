@@ -1,0 +1,41 @@
+# Publishes the app to GitHub Pages at https://xeoul.github.io/sous-chef/
+# on every push to main. It's a single static page, so this just copies
+# the files that make up the site to the gh-pages branch.
+# One-time setup, if the site doesn't appear after the first run:
+# Settings -> Pages -> Build and deployment -> Source: Deploy from a branch
+# -> gh-pages / (root).
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect site files
+        run: |
+          mkdir _site
+          cp index.html demo-seed.js _site/
+          touch _site/.nojekyll
+
+      - name: Publish to the gh-pages branch
+        working-directory: _site
+        run: |
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Deploy ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
