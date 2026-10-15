@@ -8,6 +8,11 @@ capabilities when they're granted (a shared database, AI parsing and estimates, 
 Search for recipe links, file storage for photos, file saving); opened anywhere else it falls
 back to saving on the device.
 
+## GitHub Pages
+
+The site at https://xeoul.github.io/sous-chef/ is built from this file. After changing it, run
+`python3 build-pages.py` from the repo root to regenerate `index.html`, and commit both.
+
 ## Tests
 
 Browser tests drive the page with Playwright and mock the capabilities:
