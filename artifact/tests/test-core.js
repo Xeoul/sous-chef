@@ -154,6 +154,46 @@ const runningAnims = (page) => page.evaluate(() => document.getAnimations()
   assert(errors.length === 0, 'No page errors', errors);
   await ctx.close();
 
+  console.log('\n=== 1c. Desktop layout ===');
+  for (const [w, h] of [[1440, 900], [1024, 768]]) {
+    ctx = await browser.newContext({ viewport: { width: w, height: h } });
+    await ctx.addInitScript(() => {
+      if (sessionStorage.getItem('s')) return; sessionStorage.setItem('s', '1');
+      localStorage.setItem('larder_recipes', JSON.stringify({ a: { name: 'Stir-Fry', baseServings: 4, ingredients: [{ amount: 2, unit: 'clove', name: 'garlic' }], instructions: ['Fry 2 minutes.'] } }));
+      localStorage.setItem('larder_week', JSON.stringify({ items: { a: 4 }, checked: {} }));
+    });
+    page = await ctx.newPage();
+    errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(FILE_PATH);
+    await page.waitForTimeout(500);
+    const box = (sel) => page.locator(sel).first().boundingBox();
+    const brand = await box('.brand'), tabs = await box('#tabBar'), status = await box('#statusLine');
+    assert(Math.abs(brand.y - tabs.y) < 20 && Math.abs(status.y - tabs.y) < 20 && tabs.x > brand.x + brand.width, `Header and tabs share one bar (${w}px)`);
+    for (const [tab, side, main] of [['recipes', '#planSummary', '#recipeList'], ['shop', '#addItemForm', '.shop-surface'], ['cook', '#recipePills', '#cookContent']]) {
+      await page.click(`.tab-btn[data-tab="${tab}"]`);
+      await page.waitForTimeout(250);
+      const a = await box(side), b = await box(main);
+      assert(a && b && a.x + a.width <= b.x && Math.abs(a.y - b.y) < 80, `${tab}: sidebar sits beside the main area (${w}px)`, { a, b });
+    }
+    const ing = await box('#cookContent .cook-ingredients'), steps = await box('#cookContent .cook-steps');
+    assert(ing.x + ing.width <= steps.x, `Cook: ingredients beside the directions (${w}px)`);
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `No sideways scrolling (${w}px)`);
+    await page.click('.tab-btn[data-tab="shop"]');
+    await page.click('#shoppingByRecipe .shop-item label');
+    await page.waitForTimeout(200);
+    assert(await page.evaluate(() => document.querySelector('#shoppingByRecipe .shop-item input').checked), `Ticking works in the desktop layout (${w}px)`);
+    assert(errors.length === 0, 'No page errors', errors);
+    await ctx.close();
+  }
+  ctx = await browser.newContext({ viewport: { width: 390, height: 800 } });
+  page = await ctx.newPage();
+  await page.goto(FILE_PATH);
+  await page.waitForTimeout(300);
+  const pb = await page.locator('.brand').boundingBox(), pt = await page.locator('#tabBar').boundingBox();
+  assert(pt.y > pb.y + pb.height - 2 && await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Phone keeps tabs under the header, no sideways scrolling');
+  await ctx.close();
+
   console.log('\n=== 2. Synced: fast ticks with a slow database ===');
   for (const lat of [150, 600]) {
     ctx = await browser.newContext({ viewport: { width: 390, height: 800 } });
