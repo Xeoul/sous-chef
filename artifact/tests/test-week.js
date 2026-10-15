@@ -60,7 +60,15 @@ async function open(browser, opts) {
   return { ctx, page, errors };
 }
 const card = (page, name) => page.locator('#recipeList .recipe-card', { hasText: name });
-const stored = (page, key) => page.evaluate(k => JSON.parse(localStorage.getItem(k)), key);
+// Saved data is read with a short retry, so a read that lands mid-navigation doesn't see nothing.
+const stored = async (page, key) => {
+  for (let i = 0; i < 10; i++) {
+    const v = await page.evaluate(k => JSON.parse(localStorage.getItem(k)), key).catch(() => null);
+    if (v !== null) return v;
+    await page.waitForTimeout(100);
+  }
+  return null;
+};
 
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME_PATH, headless: true });
