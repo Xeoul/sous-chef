@@ -194,6 +194,54 @@ const runningAnims = (page) => page.evaluate(() => document.getAnimations()
   assert(pt.y > pb.y + pb.height - 2 && await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Phone keeps tabs under the header, no sideways scrolling');
   await ctx.close();
 
+  console.log('\n=== 1d. More menus ===');
+  ctx = await browser.newContext({ viewport: { width: 420, height: 900 } });
+  await ctx.addInitScript(() => {
+    if (sessionStorage.getItem('s')) return; sessionStorage.setItem('s', '1');
+    localStorage.setItem('larder_recipes', JSON.stringify({ a: { name: 'Stir-Fry', baseServings: 4, ingredients: [{ amount: 2, unit: 'cup', name: 'rice' }] }, b: { name: 'Soup', baseServings: 2, ingredients: [{ amount: 1, unit: 'each', name: 'onion' }] } }));
+    localStorage.setItem('larder_week', JSON.stringify({ items: { a: 4 }, checked: { 'a>rice|cup': true } }));
+  });
+  page = await ctx.newPage();
+  errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(FILE_PATH);
+  await page.waitForTimeout(400);
+  assert(!(await page.isVisible('#planForMeBtn')) && !(await page.isVisible('#backupBtn')), 'Extra recipe actions are tucked away');
+  await page.click('#recipesMoreBtn');
+  assert(await page.getAttribute('#recipesMoreBtn', 'aria-expanded') === 'true' && await page.isVisible('#recipesMenu'), 'The ⋯ button opens the menu');
+  const items = await page.$$eval('#recipesMenu .menu-item', els => els.filter(e => e.getClientRects().length).map(e => e.textContent.trim()));
+  assert(items.join('|') === 'Plan for me|What can I make?|Nutrition & cost|Start a new week|Back up or restore', 'Menu lists the extra actions', items);
+  assert(await page.evaluate(() => document.activeElement.id) === 'planForMeBtn', 'Focus moves to the first item');
+  await page.keyboard.press('ArrowDown');
+  assert(await page.evaluate(() => document.activeElement.id) === 'ideasBtn', 'Arrow keys move through it');
+  await page.keyboard.press('Escape');
+  assert(!(await page.isVisible('#recipesMenu')) && await page.evaluate(() => document.activeElement.id) === 'recipesMoreBtn', 'Escape closes it and returns focus');
+  await page.click('#recipesMoreBtn');
+  await page.mouse.click(10, 880);
+  assert(!(await page.isVisible('#recipesMenu')), 'Clicking elsewhere closes it');
+  await page.click('#recipesMoreBtn');
+  await page.click('#backupBtn');
+  await page.waitForTimeout(200);
+  assert(await page.isVisible('#modalBackdrop') && !(await page.isVisible('#recipesMenu')), 'Picking an item runs it and closes the menu');
+  await page.click('#modalCloseBtn');
+  await page.waitForTimeout(300);
+  await page.click('.tab-btn[data-tab="shop"]');
+  await page.waitForTimeout(200);
+  await page.click('#shopMoreBtn');
+  await page.click('#unitToggle [data-system="metric"]');
+  await page.waitForTimeout(150);
+  assert(await page.isVisible('#shopMenu') && /ml|l\b/.test(await page.textContent('#shoppingByRecipe')), 'Units switch from the shopping menu (menu stays open to show it)');
+  assert(await page.isVisible('#clearCheckedBtn'), 'Clear checked is in the menu when something is ticked');
+  await page.click('#clearCheckedBtn');
+  await page.waitForTimeout(200);
+  assert(!(await page.isVisible('#shopMenu')) && (await page.$$eval('#shoppingByRecipe input:checked', e => e.length)) === 0, 'Clear checked works from the menu');
+  const mb = await page.locator('#shopMoreBtn').boundingBox();
+  await page.click('#shopMoreBtn');
+  const mm = await page.locator('#shopMenu').boundingBox();
+  assert(mm.x >= 0 && mm.x + mm.width <= 420 && mm.y >= mb.y + mb.height, 'Menu opens below its button, on screen', { mb, mm });
+  assert(errors.length === 0, 'No page errors', errors);
+  await ctx.close();
+
   console.log('\n=== 2. Synced: fast ticks with a slow database ===');
   for (const lat of [150, 600]) {
     ctx = await browser.newContext({ viewport: { width: 390, height: 800 } });

@@ -150,7 +150,7 @@ const combinedNames = (page) => page.$$eval('#shoppingCombined .shop-item .shop-
   console.log('\n=== 6. Start new week ===');
   await page.click('.tab-btn[data-tab="recipes"]');
   await page.waitForTimeout(200);
-  assert(await page.isVisible('#newWeekBtn'), '"Start new week" shown when something is planned');
+  await page.click('#recipesMoreBtn'); assert(await page.isVisible('#newWeekBtn'), '"Start new week" shown when something is planned');
   await page.click('#newWeekBtn');
   await page.waitForTimeout(200);
   let wk = await page.evaluate(() => JSON.parse(localStorage.getItem('larder_week')));

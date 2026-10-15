@@ -128,11 +128,13 @@ function startServer(jpeg) {
   assert(eggs === '32½ needed', '2.5 eggs → buy 3', eggs);
   const sugar = await page.evaluate(() => { const r = Array.from(document.querySelectorAll('#shoppingByRecipe .shop-item')).find(x => x.querySelector('.shop-name-text').textContent === 'sugar'); return r.querySelector('.shop-amount').textContent; });
   assert(sugar === '⅓ cup', 'Measured amounts aren’t rounded up', sugar);
+  await page.click('#shopMoreBtn');
   await page.click('#unitToggle [data-system="metric"]');
   await page.waitForTimeout(150);
   const sugarMl = await page.evaluate(() => { const r = Array.from(document.querySelectorAll('#shoppingByRecipe .shop-item')).find(x => x.querySelector('.shop-name-text').textContent === 'sugar'); return r.querySelector('.shop-amount').textContent; });
   assert(sugarMl === '79 ml', 'Metric shows decimals, not fractions', sugarMl);
   await page.click('#unitToggle [data-system="us"]');
+  await page.keyboard.press('Escape');
 
   console.log('\n=== 2. Every-week items ===');
   await page.fill('#addItemInput', 'coffee, paper towels');
@@ -147,7 +149,7 @@ function startServer(jpeg) {
   await page.click('#shoppingByRecipe .shop-item:has-text("coffee") label');
   await page.waitForTimeout(200);
   await page.click('.tab-btn[data-tab="recipes"]');
-  await page.click('#newWeekBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#newWeekBtn');
   await page.waitForTimeout(200);
   wk = await stored(page, 'larder_week');
   assert(wk.extras.length === 1 && wk.extras[0].name === 'coffee' && !Object.keys(wk.checked).length, 'New week keeps every-week items, unticked, and drops the rest', wk);
@@ -185,7 +187,7 @@ function startServer(jpeg) {
 
   console.log('\n=== 4. Back up & restore ===');
   ({ ctx, page, errors } = await open(browser));
-  await page.click('#backupBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#backupBtn');
   await page.waitForTimeout(200);
   assert(/Your 2 recipes/.test(await page.textContent('#modalBody')), 'Backup dialog counts your recipes');
   await page.click('[data-action="copy-backup"]');
@@ -200,7 +202,7 @@ function startServer(jpeg) {
   await ctx.close();
   // restore into an empty box
   ({ ctx, page, errors } = await open(browser, { recipes: {}, week: { items: {}, checked: {} } }));
-  await page.click('#backupBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#backupBtn');
   await page.waitForTimeout(200);
   await page.fill('#restoreText', 'not json');
   await page.click('[data-action="do-restore"]');
@@ -221,7 +223,7 @@ function startServer(jpeg) {
   await page.click('#toastHost .toast-undo');
   await page.waitForTimeout(250);
   assert(Object.keys(await stored(page, 'larder_recipes')).length === 0, 'Undo removes what the restore added');
-  await page.click('#backupBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#backupBtn');
   await page.waitForTimeout(150);
   await page.setInputFiles('#restoreFile', { name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(backup) });
   await page.waitForTimeout(400);
@@ -309,7 +311,7 @@ function startServer(jpeg) {
 
   console.log('\n=== 7. Nutrition & cost ===');
   ({ ctx, page, errors } = await open(browser, { week: { items: { r1: 4, r2: 2 }, checked: {}, extras: [{ id: 'e1', name: 'coffee' }] } }));
-  await page.click('#nutritionBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#nutritionBtn');
   await page.waitForTimeout(200);
   assert(/Not estimated yet/.test(await page.textContent('#modalBody')), 'Unestimated recipes are marked');
   await page.click('[data-action="estimate-nutrition"]');

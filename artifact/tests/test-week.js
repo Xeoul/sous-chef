@@ -284,7 +284,7 @@ const stored = async (page, key) => {
   // ===================== Helpers =====================
   console.log('\n=== 4. Plan for me ===');
   ({ ctx, page, errors } = await open(browser, { recipes: Object.assign({}, RECIPES, { r4: Object.assign({}, RECIPES.r4, { lastCooked: Date.now() }) }) }));
-  assert(await page.isVisible('#planForMeBtn'), '"Plan for me" shown');
+  await page.click('#recipesMoreBtn'); assert(await page.isVisible('#planForMeBtn'), '"Plan for me" shown');
   await page.click('#planForMeBtn');
   await page.waitForTimeout(250);
   wk = await stored(page, 'larder_week');
@@ -314,7 +314,7 @@ const stored = async (page, key) => {
 
   console.log('\n=== 5. What can I make? (no AI) ===');
   ({ ctx, page, errors } = await open(browser, { week: { items: {}, checked: {}, pantry: { flour: true } } }));
-  await page.click('#ideasBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#ideasBtn');
   await page.waitForTimeout(250);
   assert((await page.inputValue('#haveText')) === 'flour', 'Pantry items are filled in');
   await page.fill('#haveText', 'flour, 3 bananas');
@@ -332,7 +332,7 @@ const stored = async (page, key) => {
 
   console.log('\n=== 6. AI ideas and swaps (mocked) ===');
   ({ ctx, page, errors } = await open(browser, { ai: true, week: { items: { r1: 4 }, checked: {} } }));
-  await page.click('#ideasBtn');
+  await page.click('#recipesMoreBtn'); await page.click('#ideasBtn');
   await page.fill('#haveText', 'chicken, rice, spinach');
   await page.click('[data-action="find-ideas"]');
   await page.waitForTimeout(300);
