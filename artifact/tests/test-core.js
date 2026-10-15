@@ -103,6 +103,57 @@ const runningAnims = (page) => page.evaluate(() => document.getAnimations()
   assert(errors.length === 0, 'No page errors', errors);
   await ctx.close();
 
+  console.log('\n=== 1b. Same ingredient in two recipes ===');
+  ctx = await browser.newContext({ viewport: { width: 420, height: 900 } });
+  await ctx.addInitScript(() => {
+    if (sessionStorage.getItem('s')) return; sessionStorage.setItem('s', '1');
+    localStorage.clear();
+    localStorage.setItem('larder_recipes', JSON.stringify({
+      a: { name: 'Stir-Fry', baseServings: 4, ingredients: [{ amount: 2, unit: 'clove', name: 'garlic' }, { amount: 1, unit: 'lb', name: 'chicken' }] },
+      b: { name: 'Pasta', baseServings: 2, ingredients: [{ amount: 4, unit: 'clove', name: 'garlic' }, { amount: 8, unit: 'oz', name: 'spaghetti' }] } }));
+    localStorage.setItem('larder_week', JSON.stringify({ items: { a: 4, b: 2 }, checked: {} }));
+    localStorage.setItem('sous_chef_tab', 'shop'); localStorage.setItem('sous_chef_shopping_view', 'recipe');
+  });
+  page = await ctx.newPage();
+  errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(FILE_PATH);
+  await page.waitForTimeout(400);
+  const garlicStates = () => page.$$eval('#shoppingByRecipe .recipe-shop-group', gs => gs.map(g => {
+    const r = Array.from(g.querySelectorAll('.shop-item')).find(x => x.querySelector('.shop-name-text').textContent === 'garlic');
+    return g.querySelector('.recipe-shop-name').textContent + ':' + (r && r.querySelector('input').checked);
+  }).join(' '));
+  await page.click('#shoppingByRecipe .recipe-shop-group:has-text("Stir-Fry") .shop-item:has-text("garlic") label');
+  await page.waitForTimeout(200);
+  assert(await garlicStates() === 'Pasta:false Stir-Fry:true', 'Ticking garlic in one recipe leaves the other recipe’s garlic alone', await garlicStates());
+  await page.click('#viewToggle [data-view="combined"]');
+  await page.waitForTimeout(200);
+  const combinedGarlic = () => page.evaluate(() => { const r = Array.from(document.querySelectorAll('#shoppingCombined .shop-item')).find(x => x.querySelector('.shop-name-text').textContent === 'garlic'); return r.querySelector('input').checked; });
+  assert(!(await combinedGarlic()) && /6 cloves/.test(await page.textContent('#shoppingCombined')), 'Combined garlic (6 cloves) stays unticked until all of it is');
+  await page.click('#viewToggle [data-view="recipe"]');
+  await page.waitForTimeout(200);
+  await page.click('#shoppingByRecipe .recipe-shop-group:has-text("Pasta") .shop-item:has-text("garlic") label');
+  await page.waitForTimeout(200);
+  await page.click('#viewToggle [data-view="combined"]');
+  await page.waitForTimeout(200);
+  assert(await combinedGarlic(), 'Once both recipes’ garlic is ticked, combined garlic is ticked');
+  await page.click('#shoppingCombined .shop-item:has-text("garlic") label');
+  await page.waitForTimeout(200);
+  await page.click('#viewToggle [data-view="recipe"]');
+  await page.waitForTimeout(200);
+  assert(await garlicStates() === 'Pasta:false Stir-Fry:false', 'Unticking combined garlic unticks both', await garlicStates());
+  assert(/0 of 3/.test(await page.textContent('#itemCount')), 'Count is per shopping item (3 to buy)', await page.textContent('#itemCount'));
+  // A tick saved before this fix (one shared key) shows on both, and can then be split.
+  await page.evaluate(() => { const w = JSON.parse(localStorage.getItem('larder_week')); w.checked = { 'garlic|clove': true }; localStorage.setItem('larder_week', JSON.stringify(w)); });
+  await page.reload();
+  await page.waitForTimeout(400);
+  assert(await garlicStates() === 'Pasta:true Stir-Fry:true', 'An older saved tick still shows as ticked on both', await garlicStates());
+  await page.click('#shoppingByRecipe .recipe-shop-group:has-text("Pasta") .shop-item:has-text("garlic") label');
+  await page.waitForTimeout(200);
+  assert(await garlicStates() === 'Pasta:false Stir-Fry:true', '…and unticking one keeps the other', await garlicStates());
+  assert(errors.length === 0, 'No page errors', errors);
+  await ctx.close();
+
   console.log('\n=== 2. Synced: fast ticks with a slow database ===');
   for (const lat of [150, 600]) {
     ctx = await browser.newContext({ viewport: { width: 390, height: 800 } });

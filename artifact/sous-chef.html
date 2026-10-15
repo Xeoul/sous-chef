@@ -2531,23 +2531,60 @@
   // then sinks below the unchecked ones — or rises back up, if it was unchecked.
   var sinkHold = {};
   var sinkTimers = {};
-  function sinkChecked(key) { return key in sinkHold ? sinkHold[key] : !!week.checked[key]; }
+  function sinkChecked(key) { return key in sinkHold ? sinkHold[key] : checkedByKey(key); }
+
+  // Ticks are kept per recipe: "garlic|clove" in two recipes are two separate things to tick,
+  // keyed "<recipeId>>garlic|clove". A Combined row (keyed "garlic|clove") is ticked when every
+  // recipe's part of it is. A bare combined key in saved data is from before this — it counts as
+  // ticking all of that item's parts, and is spread out onto them the next time one is toggled.
+  var PART_SEP = '>';
+  var comboParts = null; // combined key -> [part keys], rebuilt by computeShoppingList
+  function partsOf(comboKey) {
+    if (!comboParts) computeShoppingList();
+    return comboParts[comboKey] || [];
+  }
+  function checkedByKey(key) {
+    if (key.indexOf('x:') === 0) return !!week.checked[key];
+    var cut = key.indexOf(PART_SEP);
+    if (cut !== -1) return !!(week.checked[key] || week.checked[key.slice(cut + 1)]);
+    var parts = partsOf(key);
+    if (!parts.length) return !!week.checked[key];
+    return parts.every(function (p) { return week.checked[p] || week.checked[key]; });
+  }
+  function isChecked(it) { return checkedByKey(it.key); }
   function sinkSort(list) {
     return list.filter(function (it) { return !sinkChecked(it.key); })
       .concat(list.filter(function (it) { return sinkChecked(it.key); }));
   }
 
   function toggleChecked(key) {
-    if (!(key in sinkHold)) sinkHold[key] = !!week.checked[key];
+    if (!(key in sinkHold)) sinkHold[key] = checkedByKey(key);
     clearTimeout(sinkTimers[key]);
     sinkTimers[key] = setTimeout(function () {
       delete sinkHold[key];
       delete sinkTimers[key];
       renderShopping();
     }, 900);
+    computeShoppingList(); // current recipe/plan → which parts make up each combined item
     var newWeek = cloneWeek(week);
-    if (newWeek.checked[key]) delete newWeek.checked[key];
-    else newWeek.checked[key] = true;
+    var c = newWeek.checked;
+    if (key.indexOf('x:') === 0) {
+      if (c[key]) delete c[key]; else c[key] = true;
+    } else {
+      var cut = key.indexOf(PART_SEP);
+      var combo = cut === -1 ? key : key.slice(cut + 1);
+      var parts = partsOf(combo);
+      // Spread an old whole-item tick onto its parts first, so parts can then differ.
+      if (c[combo] && parts.length) { parts.forEach(function (p) { c[p] = true; }); delete c[combo]; }
+      if (cut !== -1) {
+        if (c[key]) delete c[key]; else c[key] = true;
+      } else if (parts.length) {
+        var turnOn = !parts.every(function (p) { return c[p]; });
+        parts.forEach(function (p) { if (turnOn) c[p] = true; else delete c[p]; });
+      } else {
+        if (c[key]) delete c[key]; else c[key] = true;
+      }
+    }
     saveWeekRecord(newWeek);
   }
 
@@ -3110,6 +3147,7 @@
 
   function computeShoppingList() {
     var totals = {};
+    comboParts = {};
     Object.keys(week.items).forEach(function (recipeId) {
       var recipe = recipes[recipeId];
       if (!recipe) return;
@@ -3121,6 +3159,9 @@
         var amt = (parseFloat(ing.amount) || 0) * scale;
         if (!totals[key]) totals[key] = { key: key, name: ing.name.trim(), unit: unit, amount: 0 };
         totals[key].amount += amt;
+        var part = recipeId + PART_SEP + key;
+        var list = comboParts[key] || (comboParts[key] = []);
+        if (list.indexOf(part) === -1) list.push(part);
       });
     });
     return Object.keys(totals)
@@ -3129,14 +3170,14 @@
   }
 
   function shopItemHtml(it) {
-    var isChecked = !!week.checked[it.key];
+    var checked = isChecked(it);
     var trailingHtml = it.amount > 0
       ? '<span class="shop-amount" data-src="' + escapeHtml(shopAmountHtml(it)) + '">' + shopAmountHtml(it) + '</span>'
       : (it.unit ? '<span class="descriptor-tag">' + escapeHtml(it.unit) + '</span>' : '<span class="shop-amount"></span>');
     return (
-      '<li class="shop-item' + (isChecked ? ' is-checked' : '') + '">' +
+      '<li class="shop-item' + (checked ? ' is-checked' : '') + '">' +
         '<label>' +
-          '<input type="checkbox" data-key="' + escapeHtml(it.key) + '"' + (isChecked ? ' checked' : '') + '>' +
+          '<input type="checkbox" data-key="' + escapeHtml(it.key) + '"' + (checked ? ' checked' : '') + '>' +
           trailingHtml +
           '<span class="shop-name"><span class="shop-name-text">' + escapeHtml(it.name) + '</span></span>' +
         '</label>' +
@@ -3146,11 +3187,11 @@
   }
 
   function extraItemHtml(it) {
-    var isChecked = !!week.checked[it.key];
+    var checked = isChecked(it);
     return (
-      '<li class="shop-item is-extra' + (isChecked ? ' is-checked' : '') + '">' +
+      '<li class="shop-item is-extra' + (checked ? ' is-checked' : '') + '">' +
         '<label>' +
-          '<input type="checkbox" data-key="' + escapeHtml(it.key) + '"' + (isChecked ? ' checked' : '') + '>' +
+          '<input type="checkbox" data-key="' + escapeHtml(it.key) + '"' + (checked ? ' checked' : '') + '>' +
           '<span class="shop-name"><span class="shop-name-text">' + escapeHtml(it.name) + '</span></span>' +
         '</label>' +
         '<button type="button" class="row-action repeat-btn" data-repeat-extra="' + escapeHtml(it.id) + '" aria-pressed="' + (it.every ? 'true' : 'false') + '" aria-label="Add ' + escapeHtml(it.name) + ' every week" title="Every week">' + ICONS.repeat + '</button>' +
@@ -3160,10 +3201,10 @@
   }
 
   function updateExtraItemEl(el, it) {
-    var isChecked = !!week.checked[it.key];
-    el.classList.toggle('is-checked', isChecked);
+    var checked = isChecked(it);
+    el.classList.toggle('is-checked', checked);
     var checkbox = el.querySelector('input[type="checkbox"]');
-    if (checkbox && checkbox.checked !== isChecked) checkbox.checked = isChecked;
+    if (checkbox && checkbox.checked !== checked) checkbox.checked = checked;
     var nameEl = el.querySelector('.shop-name-text');
     if (nameEl && nameEl.textContent !== it.name) nameEl.textContent = it.name;
     var rep = el.querySelector('.repeat-btn');
@@ -3175,13 +3216,13 @@
   function rowKey(it) { return it.key; }
 
   function updateShopItemEl(el, it) {
-    var isChecked = !!week.checked[it.key];
-    el.classList.toggle('is-checked', isChecked);
+    var checked = isChecked(it);
+    el.classList.toggle('is-checked', checked);
 
     // Patch the checkbox in place — recreating it would replay its "checked" pop
     // animation on every unrelated row whenever the list re-renders.
     var checkbox = el.querySelector('input[type="checkbox"]');
-    if (checkbox && checkbox.checked !== isChecked) checkbox.checked = isChecked;
+    if (checkbox && checkbox.checked !== checked) checkbox.checked = checked;
 
     var nameEl = el.querySelector('.shop-name-text');
     if (nameEl && nameEl.textContent !== it.name) nameEl.textContent = it.name;
@@ -3231,7 +3272,7 @@
         var unit = (ing.unit || '').trim();
         var key = ing.name.trim().toLowerCase() + '|' + unit.toLowerCase();
         var amt = (parseFloat(ing.amount) || 0) * scale;
-        if (!totals[key]) totals[key] = { key: key, name: ing.name.trim(), unit: unit, amount: 0 };
+        if (!totals[key]) totals[key] = { key: id + PART_SEP + key, combo: key, name: ing.name.trim(), unit: unit, amount: 0 };
         totals[key].amount += amt;
       });
       var items = Object.keys(totals).map(function (k) { return totals[k]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
@@ -3366,7 +3407,7 @@
     all.forEach(function (it) { (week.pantry[pantryKey(it.name)] ? pantried : active).push(it); });
     var extras = week.extras.map(function (x) { return { kind: 'extra', key: 'x:' + x.id, id: x.id, name: x.name, every: !!x.every }; });
     var countable = active.concat(extras);
-    var checked = countable.filter(function (it) { return !!week.checked[it.key]; }).length;
+    var checked = countable.filter(function (it) { return isChecked(it); }).length;
     return { all: all, active: active, pantried: pantried, extras: extras, total: countable.length, checked: checked };
   }
 
@@ -3385,7 +3426,7 @@
   function updateSectionEl(el, sec) {
     var nameEl = el.querySelector('.section-name');
     if (nameEl && nameEl.textContent !== sec.label) nameEl.textContent = sec.label;
-    var left = sec.items.filter(function (it) { return !week.checked[it.key]; }).length;
+    var left = sec.items.filter(function (it) { return !isChecked(it); }).length;
     var metaEl = el.querySelector('.section-meta');
     if (metaEl) metaEl.textContent = left ? left + ' left' : 'Done';
     el.classList.toggle('is-done', !left);
@@ -3472,7 +3513,7 @@
     var st = shoppingState();
     var lines = ['Shopping list'];
     function add(label, items) {
-      var open = items.filter(function (it) { return !week.checked[it.key]; });
+      var open = items.filter(function (it) { return !isChecked(it); });
       if (!open.length) return;
       lines.push('', label);
       open.forEach(function (it) {
